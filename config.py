@@ -16,4 +16,4 @@ COLORS = {
 }
 
 DNS_SERVER = "96.126.124.117"
-ADLIBRE_WEBSITE = "https://your-site.com/signup"
+ADLIBRE_WEBSITE = "http://45.79.9.188/"
