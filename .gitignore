@@ -3,4 +3,5 @@ dist/
 build/
 *.dmg
 __pycache__/
+*.pyc
 .DS_Store
