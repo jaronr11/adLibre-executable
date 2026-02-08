@@ -1,0 +1,6 @@
+# Core dependencies
+customtkinter>=5.2.0
+requests>=2.31.0
+
+# Build tools (dev only)
+pyinstaller>=6.0.0
