@@ -18,7 +18,7 @@ from pathlib import Path
 class AuthService:
     CLIENT_ID = "adlibre-desktop"
     REDIRECT_URI = "adlibre://callback"
-    API_BASE = "http://localhost:4000" #"http://45.79.9.188"    
+    API_BASE = "http://45.79.9.188"    
 
     # For local callback handling (fallback if custom URL scheme not registered)
     LOCAL_CALLBACK_PORT = 19847
