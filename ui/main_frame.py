@@ -1,5 +1,6 @@
 import customtkinter as ctk
-from config import COLORS, FONT, DNS_SERVER
+import webbrowser
+from config import COLORS, FONT, DNS_SERVER, ADLIBRE_WEBSITE
 
 
 class MainFrame(ctk.CTkFrame):
@@ -12,20 +13,27 @@ class MainFrame(ctk.CTkFrame):
         self.create_ui()
 
     def create_ui(self):
+        # ----------------- Status Bar -----------------
         self.status_bar = ctk.CTkFrame(self, height=44, fg_color=COLORS["exposed_red"], corner_radius=0)
         self.status_bar.pack(fill="x")
         self.status_bar.pack_propagate(False)
 
         self.status_label = ctk.CTkLabel(
-            self.status_bar, text="STATUS: EXPOSED",
+            self.status_bar,
+            text="STATUS: DISCONNECTED",
             font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
             text_color=COLORS["text_primary"]
         )
         self.status_label.pack(side="left", padx=20)
 
-        ctk.CTkLabel(self.status_bar, text="●", font=ctk.CTkFont(size=16),
-                     text_color=COLORS["text_primary"]).pack(side="right", padx=20)
+        ctk.CTkLabel(
+            self.status_bar,
+            text="●",
+            font=ctk.CTkFont(size=16),
+            text_color=COLORS["text_primary"]
+        ).pack(side="right", padx=20)
 
+        # ----------------- Body -----------------
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(expand=True)
 
@@ -36,19 +44,31 @@ class MainFrame(ctk.CTkFrame):
         header = ctk.CTkFrame(header_row, fg_color="transparent")
         header.pack(side="left")
 
-        ctk.CTkLabel(
-            header, text="ad",
+        def open_site(_=None):
+            webbrowser.open(ADLIBRE_WEBSITE)
+
+        header.bind("<Button-1>", open_site)
+        header.configure(cursor="hand2")
+
+        ad_label = ctk.CTkLabel(
+            header,
+            text="ad",
             font=ctk.CTkFont(family=FONT, size=52, weight="bold"),
             text_color=COLORS["deep_void"],
             fg_color=COLORS["shield_green"],
-            corner_radius=6, padx=10, pady=2
-        ).pack(side="left")
+            corner_radius=6,
+            padx=10,
+            pady=2
+        )
+        ad_label.pack(side="left")
 
-        ctk.CTkLabel(
-            header, text="Libre",
+        libre_label = ctk.CTkLabel(
+            header,
+            text="Libre",
             font=ctk.CTkFont(family=FONT, size=52, weight="bold"),
             text_color=COLORS["text_primary"]
-        ).pack(side="left")
+        )
+        libre_label.pack(side="left")
 
         # Logout button
         self.logout_button = ctk.CTkButton(
@@ -74,21 +94,34 @@ class MainFrame(ctk.CTkFrame):
         )
         self.welcome_label.pack(anchor="w", pady=(0, 48))
 
+        # ----------------- Connect Button -----------------
         self.connect_button = ctk.CTkButton(
-            body, text="[ CONNECT ]",
+            body,
+            text="[ CONNECT ]",
             font=ctk.CTkFont(family=FONT, size=14, weight="bold"),
             fg_color=COLORS["text_primary"],
             text_color=COLORS["deep_void"],
             hover_color=COLORS["text_muted"],
-            height=72, corner_radius=0,
-            border_width=3, border_color=COLORS["text_primary"],
+            height=72,
+            width=360,
+            corner_radius=0,
+            border_width=3,
+            border_color=COLORS["text_primary"],
             command=self.toggle_connection
         )
-        self.connect_button.pack(fill="x", padx=28, pady=(24, 24))
+        self.connect_button.pack(anchor="center", pady=(24, 12))
 
-        ctk.CTkLabel(body, text=f"Server: {DNS_SERVER}",
-                     font=ctk.CTkFont(family=FONT, size=12),
-                     text_color=COLORS["text_muted"]).pack(anchor="w")
+        # ----------------- Server Info -----------------
+        self.server_label = ctk.CTkLabel(
+            body,
+            text="Server: AUTOMATIC",
+            font=ctk.CTkFont(family=FONT, size=12),
+            text_color=COLORS["text_muted"],
+            anchor="center"
+        )
+        self.server_label.pack(anchor="center")
+
+        self.update_connection_ui()
 
     def set_user(self, user):
         """Update UI with logged-in user info."""
@@ -127,7 +160,7 @@ class MainFrame(ctk.CTkFrame):
     def update_connection_ui(self):
         if self.master.is_connected:
             self.status_bar.configure(fg_color=COLORS["shield_green"])
-            self.status_label.configure(text="STATUS: PROTECTED")
+            self.status_label.configure(text="STATUS: CONNECTED")
             self.connect_button.configure(
                 text="[ DISCONNECT ]",
                 fg_color=COLORS["shield_green"],
@@ -135,15 +168,23 @@ class MainFrame(ctk.CTkFrame):
                 hover_color=COLORS["shield_green_hover"],
                 border_color=COLORS["shield_green"]
             )
+            self.server_label.configure(
+                text=f"Server: {DNS_SERVER}",
+                text_color=COLORS["text_primary"]
+            )
         else:
             self.status_bar.configure(fg_color=COLORS["exposed_red"])
-            self.status_label.configure(text="STATUS: EXPOSED")
+            self.status_label.configure(text="STATUS: DISCONNECTED")
             self.connect_button.configure(
                 text="[ CONNECT ]",
                 fg_color=COLORS["text_primary"],
                 text_color=COLORS["deep_void"],
                 hover_color=COLORS["text_muted"],
                 border_color=COLORS["text_primary"]
+            )
+            self.server_label.configure(
+                text="Server: AUTOMATIC",
+                text_color=COLORS["text_muted"]
             )
 
     def show_error(self, message: str):
