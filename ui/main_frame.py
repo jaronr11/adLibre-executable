@@ -2,11 +2,14 @@ import customtkinter as ctk
 import webbrowser
 from config import COLORS, FONT, DNS_SERVER, ADLIBRE_WEBSITE
 
+
 class MainFrame(ctk.CTkFrame):
-    def __init__(self, master, dns_service):
+    def __init__(self, master, dns_service, auth_service, on_logout):
         super().__init__(master, fg_color=COLORS["deep_void"])
         self.master = master
         self.dns_service = dns_service
+        self.auth = auth_service
+        self.on_logout = on_logout
         self.create_ui()
 
     def create_ui(self):
@@ -34,9 +37,12 @@ class MainFrame(ctk.CTkFrame):
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(expand=True)
 
-        # ----------------- Clickable Header -----------------
-        header = ctk.CTkFrame(body, fg_color="transparent")
-        header.pack(anchor="center")
+        # Header with logo and logout button
+        header_row = ctk.CTkFrame(body, fg_color="transparent")
+        header_row.pack(fill="x", anchor="w")
+
+        header = ctk.CTkFrame(header_row, fg_color="transparent")
+        header.pack(side="left")
 
         def open_site(_=None):
             webbrowser.open(ADLIBRE_WEBSITE)
@@ -64,10 +70,29 @@ class MainFrame(ctk.CTkFrame):
         )
         libre_label.pack(side="left")
 
-        # Make labels clickable too
-        for widget in (ad_label, libre_label):
-            widget.bind("<Button-1>", open_site)
-            widget.configure(cursor="hand2")
+        # Logout button
+        self.logout_button = ctk.CTkButton(
+            header_row,
+            text="Logout",
+            font=ctk.CTkFont(size=12),
+            fg_color="transparent",
+            text_color=COLORS["text_muted"],
+            hover_color=COLORS["deep_void"],
+            width=60,
+            height=28,
+            command=self._do_logout
+        )
+        self.logout_button.pack(side="right", padx=(0, 10))
+
+        # Welcome message with username
+        self.welcome_label = ctk.CTkLabel(
+            body,
+            text="Secure your connection",
+            font=ctk.CTkFont(size=13),
+            text_color=COLORS["text_muted"],
+            anchor="w"
+        )
+        self.welcome_label.pack(anchor="w", pady=(0, 48))
 
         # ----------------- Connect Button -----------------
         self.connect_button = ctk.CTkButton(
@@ -97,6 +122,18 @@ class MainFrame(ctk.CTkFrame):
         self.server_label.pack(anchor="center")
 
         self.update_connection_ui()
+
+    def set_user(self, user):
+        """Update UI with logged-in user info."""
+        if user and user.get("username"):
+            self.welcome_label.configure(text=f"Welcome, {user['username']}")
+        else:
+            self.welcome_label.configure(text="Secure your connection")
+
+    def _do_logout(self):
+        """Handle logout."""
+        self.auth.logout()
+        self.on_logout()
 
     def toggle_connection(self):
         if self.master.is_connected:

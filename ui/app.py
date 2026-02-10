@@ -5,6 +5,7 @@ from services.dns_service import DNSService
 from ui.login_frame import LoginFrame
 from ui.main_frame import MainFrame
 
+
 class DNSChangerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -18,10 +19,15 @@ class DNSChangerApp(ctk.CTk):
         self.dns = DNSService(DNS_SERVER)
         self.is_connected = False
 
-        self.login_frame = LoginFrame(self, on_login=self.handle_login)
-        self.main_frame = MainFrame(self, dns_service=self.dns)
+        self.login_frame = LoginFrame(self, auth_service=self.auth, on_login_success=self.handle_login)
+        self.main_frame = MainFrame(self, dns_service=self.dns, auth_service=self.auth, on_logout=self.handle_logout)
 
-        self.show_login()
+        # Check if already logged in (has saved tokens)
+        if self.auth.is_logged_in():
+            self.main_frame.set_user(self.auth.user)
+            self.show_main()
+        else:
+            self.show_login()
 
     def show_login(self):
         self.main_frame.pack_forget()
@@ -31,8 +37,12 @@ class DNSChangerApp(ctk.CTk):
         self.login_frame.pack_forget()
         self.main_frame.pack(fill="both", expand=True)
 
-    def handle_login(self, username: str, password: str):
-        if self.auth.login(username, password):
-            self.show_main()
-        else:
-            self.login_frame.set_error("Invalid credentials")
+    def handle_login(self, user):
+        """Called when OAuth login succeeds."""
+        self.main_frame.set_user(user)
+        self.show_main()
+
+    def handle_logout(self):
+        """Called when user logs out."""
+        self.login_frame._reset_button()
+        self.show_login()
