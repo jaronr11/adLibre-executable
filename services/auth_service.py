@@ -142,8 +142,8 @@ class AuthService:
         server = HTTPServer(("localhost", self.LOCAL_CALLBACK_PORT), CallbackHandler)
         server.timeout = 120  # 2 minute timeout
         
-        # Open browser
-        webbrowser.open(login_url)
+        # Request a new browser window for desktop app sign-in.
+        webbrowser.open(login_url, new=1, autoraise=True)
         
         # Wait for callback (blocking, but could be threaded)
         server.handle_request()
