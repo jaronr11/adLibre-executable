@@ -104,7 +104,7 @@ class AuthService:
 
         # Poll /api/app-auth/check until authorized or timed out
         auth_code = None
-        deadline = time.time() + 120  # 2 minute timeout
+        deadline = time.time() + 60  # 60 second timeout
 
         while time.time() < deadline:
             time.sleep(2)
