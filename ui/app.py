@@ -41,8 +41,12 @@ class DNSChangerApp(ctk.CTk):
         """Called when OAuth login succeeds."""
         self.main_frame.set_user(user)
         self.show_main()
+        # Start periodic tasks to refresh token and authorize device every 5 minutes
+        self.auth.start_periodic_tasks(interval_seconds=300)
 
     def handle_logout(self):
         """Called when user logs out."""
+        # Stop periodic tasks when logging out
+        self.auth.stop_periodic_tasks()
         self.login_frame._reset_button()
         self.show_login()

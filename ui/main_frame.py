@@ -143,6 +143,7 @@ class MainFrame(ctk.CTkFrame):
 
     def connect(self):
         try:
+            success, error_msg = self.auth.authorize_device_access()
             self.dns_service.connect()
             self.master.is_connected = True
             self.update_connection_ui()

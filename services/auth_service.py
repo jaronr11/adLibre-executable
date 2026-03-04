@@ -27,6 +27,9 @@ class AuthService:
         self.refresh_token = None
         self.user = None
         self._load_tokens()
+        # Periodic task control
+        self._periodic_thread = None
+        self._stop_event = threading.Event()
     
     def _generate_pkce(self):
         """Generate PKCE code_verifier and code_challenge."""
@@ -212,3 +215,115 @@ class AuthService:
         if self.access_token:
             return {"Authorization": f"Bearer {self.access_token}"}
         return {}
+    
+    def authorize_device_access(self):
+        """
+        Send POST request to authorize device access and register device IP.
+        Called before connecting to ensure user has device access.
+        Returns (success, error_message) tuple.
+        
+        The endpoint:
+        - Extracts the client IP from the request
+        - Sends it to the DNS server for authorization
+        - Returns success only if both the request succeeds AND DNS server authorizes the IP
+        """
+        if not self.access_token:
+            return (False, "Not authenticated")
+        
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/api/app-auth/device-access",
+                headers=self.get_auth_header(),
+                json={},
+                timeout=10,
+            )
+            
+            # Handle HTTP error statuses
+            if resp.status_code == 500:
+                return (False, "FUCK MY LIFE")
+            elif resp.status_code >= 400:
+                try:
+                    error_data = resp.json()
+                    error_msg = error_data.get("error") or error_data.get("message") or f"Authorization failed (HTTP {resp.status_code})"
+                except:
+                    error_msg = f"Authorization failed (HTTP {resp.status_code})"
+                return (False, error_msg)
+            
+            # Parse successful response
+            try:
+                data = resp.json()
+            except:
+                return (False, "Invalid server response")
+            
+            # Check if DNS server successfully authorized the device IP
+            dns_response = data.get("dns_server_response", {})
+            if dns_response.get("error"):
+                dns_error = dns_response.get("error", "DNS server denied access")
+                return (False, dns_error)
+            
+            # Device authorization successful
+            print(f"Device authorized. Active devices: {data.get('active_devices', 'unknown')}")
+            return (True, None)
+            
+        except requests.exceptions.Timeout:
+            return (False, "Request timeout - check your connection")
+        except requests.exceptions.ConnectionError:
+            return (False, "Connection error - check your internet")
+        except Exception as e:
+            return (False, f"Authorization failed: {str(e)}")
+        
+    
+    def _periodic_worker(self, interval_seconds, task):
+        """Worker loop that runs `task` immediately, then every `interval_seconds` seconds.
+
+        The loop exits when `self._stop_event` is set.
+        """
+        # Run first time immediately
+        try:
+            task()
+        except Exception:
+            pass
+
+        # Repeatedly wait and run until stopped
+        while not self._stop_event.wait(interval_seconds):
+            try:
+                task()
+            except Exception:
+                pass
+
+    def start_periodic_tasks(self, interval_seconds=300, task=None):
+        """Start a background daemon thread that runs `task` every `interval_seconds`.
+
+        - If `task` is None, defaults to refreshing the access token and calling
+          `authorize_device_access()`.
+        - `interval_seconds` defaults to 300 (5 minutes).
+        """
+        if self._periodic_thread and self._periodic_thread.is_alive():
+            return  # already running
+
+        if task is None:
+            def task():
+                try:
+                    self.refresh_access_token()
+                except Exception:
+                    pass
+                try:
+                    self.authorize_device_access()
+                except Exception:
+                    pass
+
+        # Clear any previous stop event and start new thread
+        self._stop_event.clear()
+        self._periodic_thread = threading.Thread(
+            target=self._periodic_worker, args=(interval_seconds, task), daemon=True
+        )
+        self._periodic_thread.start()
+
+    def stop_periodic_tasks(self, join_timeout=5):
+        """Signal the periodic worker to stop and join the thread (optional timeout)."""
+        self._stop_event.set()
+        if self._periodic_thread:
+            try:
+                self._periodic_thread.join(timeout=join_timeout)
+            except Exception:
+                pass
