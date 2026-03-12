@@ -240,7 +240,7 @@ class AuthService:
             
             # Handle HTTP error statuses
             if resp.status_code == 500:
-                return (False, "FUCK MY LIFE")
+                return (False, "500: Internal Server Error")
             elif resp.status_code >= 400:
                 try:
                     error_data = resp.json()

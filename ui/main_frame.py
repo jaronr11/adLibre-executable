@@ -144,6 +144,9 @@ class MainFrame(ctk.CTkFrame):
     def connect(self):
         try:
             success, error_msg = self.auth.authorize_device_access()
+            if not success:
+                self.show_error(f"Authorization failed: {error_msg}")
+                return
             self.dns_service.connect()
             self.master.is_connected = True
             self.update_connection_ui()
@@ -189,5 +192,4 @@ class MainFrame(ctk.CTkFrame):
             )
 
     def show_error(self, message: str):
-        self.status_label.configure(text="ERROR (see console)")
-        print("ERROR:", message)
+        self.status_label.configure(text=message)
