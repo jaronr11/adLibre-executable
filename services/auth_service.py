@@ -30,6 +30,8 @@ class AuthService:
         # Periodic task control
         self._periodic_thread = None
         self._stop_event = threading.Event()
+        self.last_authorized = None  # timestamp of last successful authorization
+        self.AUTH_TIMEOUT = 330 # seconds before authorization is considered stale (5min + 30s grace)
     
     def _generate_pkce(self):
         """Generate PKCE code_verifier and code_challenge."""
@@ -262,6 +264,7 @@ class AuthService:
                 return (False, dns_error)
             
             # Device authorization successful
+            self.last_authorized = time.time()
             print(f"Device authorized. Active devices: {data.get('active_devices', 'unknown')}")
             return (True, None)
             
@@ -273,6 +276,12 @@ class AuthService:
             return (False, f"Authorization failed: {str(e)}")
         
     
+    def is_authorized(self):
+        """Check if the last authorization timestamp is still within the valid window."""
+        if self.last_authorized is None:
+            return False
+        return (time.time() - self.last_authorized) < self.AUTH_TIMEOUT
+
     def _periodic_worker(self, interval_seconds, task):
         """Worker loop that runs `task` immediately, then every `interval_seconds` seconds.
 

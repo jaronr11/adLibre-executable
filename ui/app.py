@@ -26,6 +26,8 @@ class DNSChangerApp(ctk.CTk):
         if self.auth.is_logged_in():
             self.main_frame.set_user(self.auth.user)
             self.show_main()
+            self.auth.start_periodic_tasks(interval_seconds=300)
+            self.main_frame.start_auth_check()
         else:
             self.show_login()
 
@@ -43,10 +45,13 @@ class DNSChangerApp(ctk.CTk):
         self.show_main()
         # Start periodic tasks to refresh token and authorize device every 5 minutes
         self.auth.start_periodic_tasks(interval_seconds=300)
+        # Start 1-second auth timestamp check
+        self.main_frame.start_auth_check()
 
     def handle_logout(self):
         """Called when user logs out."""
         # Stop periodic tasks when logging out
         self.auth.stop_periodic_tasks()
+        self.main_frame.stop_auth_check()
         self.login_frame._reset_button()
         self.show_login()

@@ -191,5 +191,24 @@ class MainFrame(ctk.CTkFrame):
                 text_color=COLORS["text_muted"]
             )
 
+    def start_auth_check(self):
+        """Start a 1-second polling loop that checks the authorization timestamp."""
+        self._check_auth_loop()
+
+    def _check_auth_loop(self):
+        """Every 1 second, check if authorization is still valid.
+        If stale, re-ping the server. Reconnect if sub is active, disconnect if not."""
+        if self.master.is_connected:
+            success, error_msg = self.auth.authorize_device_access()
+            if not success:
+                self.disconnect()
+                self.show_error(f"Authorization failed: {error_msg}")
+        self._auth_check_id = self.after(1000, self._check_auth_loop)
+
+    def stop_auth_check(self):
+        """Stop the 1-second auth check loop."""
+        if hasattr(self, '_auth_check_id'):
+            self.after_cancel(self._auth_check_id)
+
     def show_error(self, message: str):
         self.status_label.configure(text=message)
