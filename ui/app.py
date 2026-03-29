@@ -11,7 +11,7 @@ class DNSChangerApp(ctk.CTk):
         super().__init__()
 
         self.title("adLibre")
-        self.geometry("420x520")
+        self.geometry("420x640")
         self.configure(fg_color=COLORS["deep_void"])
         self.resizable(False, False)
 
@@ -28,6 +28,7 @@ class DNSChangerApp(ctk.CTk):
             self.show_main()
             self.auth.start_periodic_tasks(interval_seconds=300)
             self.main_frame.start_auth_check()
+            self.main_frame.start_home_network_polling()
         else:
             self.show_login()
 
@@ -47,11 +48,13 @@ class DNSChangerApp(ctk.CTk):
         self.auth.start_periodic_tasks(interval_seconds=300)
         # Start 1-second auth timestamp check
         self.main_frame.start_auth_check()
+        self.main_frame.start_home_network_polling()
 
     def handle_logout(self):
         """Called when user logs out."""
         # Stop periodic tasks when logging out
         self.auth.stop_periodic_tasks()
         self.main_frame.stop_auth_check()
+        self.main_frame.stop_home_network_polling()
         self.login_frame._reset_button()
         self.show_login()

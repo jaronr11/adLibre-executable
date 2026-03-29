@@ -14,11 +14,13 @@ from urllib.parse import urlparse, parse_qs
 import json
 from pathlib import Path
 
+from config import API_BASE as DEFAULT_API_BASE
+
 
 class AuthService:
     CLIENT_ID = "adlibre-desktop"
     REDIRECT_URI = "https://adlibre.org/callback"
-    API_BASE = "http://45.79.9.188"    
+    API_BASE = DEFAULT_API_BASE
     
     TOKEN_FILE = Path.home() / ".adlibre" / "tokens.json"
     
@@ -31,6 +33,7 @@ class AuthService:
         self._periodic_thread = None
         self._stop_event = threading.Event()
         self.last_authorized = None  # timestamp of last successful authorization
+        self.home_network = None
         self.AUTH_TIMEOUT = 330 # seconds before authorization is considered stale (5min + 30s grace)
     
     def _generate_pkce(self):
@@ -66,6 +69,7 @@ class AuthService:
         self.access_token = None
         self.refresh_token = None
         self.user = None
+        self.home_network = None
         if self.TOKEN_FILE.exists():
             self.TOKEN_FILE.unlink()
     
@@ -217,6 +221,24 @@ class AuthService:
         if self.access_token:
             return {"Authorization": f"Bearer {self.access_token}"}
         return {}
+
+    def _extract_error_message(self, response):
+        try:
+            data = response.json()
+        except Exception:
+            return f"Request failed (HTTP {response.status_code})", None
+
+        message = (
+            data.get("error")
+            or data.get("message")
+            or f"Request failed (HTTP {response.status_code})"
+        )
+        return message, data
+
+    def _store_home_network(self, data):
+        if isinstance(data, dict):
+            self.home_network = data.get("home_network")
+        return self.home_network
     
     def authorize_device_access(self):
         """
@@ -240,30 +262,20 @@ class AuthService:
                 timeout=10,
             )
             
-            # Handle HTTP error statuses
-            if resp.status_code == 500:
-                return (False, "500: Internal Server Error")
-            elif resp.status_code >= 400:
-                try:
-                    error_data = resp.json()
-                    error_msg = error_data.get("error") or error_data.get("message") or f"Authorization failed (HTTP {resp.status_code})"
-                except:
-                    error_msg = f"Authorization failed (HTTP {resp.status_code})"
+            if resp.status_code >= 400:
+                error_msg, _data = self._extract_error_message(resp)
                 return (False, error_msg)
             
-            # Parse successful response
             try:
                 data = resp.json()
-            except:
+            except Exception:
                 return (False, "Invalid server response")
             
-            # Check if DNS server successfully authorized the device IP
-            dns_response = data.get("dns_server_response", {})
-            if dns_response.get("error"):
-                dns_error = dns_response.get("error", "DNS server denied access")
-                return (False, dns_error)
+            self._store_home_network(data)
+
+            if data.get("status") != "ok":
+                return (False, data.get("error") or data.get("message") or "DNS server denied access")
             
-            # Device authorization successful
             self.last_authorized = time.time()
             print(f"Device authorized. Active devices: {data.get('active_devices', 'unknown')}")
             return (True, None)
@@ -274,6 +286,59 @@ class AuthService:
             return (False, "Connection error - check your internet")
         except Exception as e:
             return (False, f"Authorization failed: {str(e)}")
+
+    def get_home_network_status(self):
+        """Fetch the current home network status for this account."""
+        if not self.access_token:
+            return (False, None, "Not authenticated")
+
+        try:
+            resp = requests.get(
+                f"{self.API_BASE}/api/app-auth/home-network",
+                headers=self.get_auth_header(),
+                timeout=10,
+            )
+
+            if resp.status_code >= 400:
+                error_msg, _data = self._extract_error_message(resp)
+                return (False, None, error_msg)
+
+            data = resp.json()
+            home_network = self._store_home_network(data)
+            return (True, home_network, None)
+        except requests.exceptions.Timeout:
+            return (False, None, "Request timeout - check your connection")
+        except requests.exceptions.ConnectionError:
+            return (False, None, "Connection error - check your internet")
+        except Exception as e:
+            return (False, None, f"Home network lookup failed: {str(e)}")
+
+    def set_home_network(self):
+        """Register the current public IP as the user's home network."""
+        if not self.access_token:
+            return (False, None, "Not authenticated")
+
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/api/app-auth/home-network",
+                headers=self.get_auth_header(),
+                json={},
+                timeout=10,
+            )
+
+            if resp.status_code >= 400:
+                error_msg, _data = self._extract_error_message(resp)
+                return (False, None, error_msg)
+
+            data = resp.json()
+            home_network = self._store_home_network(data)
+            return (True, home_network, data.get("message"))
+        except requests.exceptions.Timeout:
+            return (False, None, "Request timeout - check your connection")
+        except requests.exceptions.ConnectionError:
+            return (False, None, "Connection error - check your internet")
+        except Exception as e:
+            return (False, None, f"Failed to set home network: {str(e)}")
         
     
     def is_authorized(self):
@@ -318,6 +383,10 @@ class AuthService:
                     pass
                 try:
                     self.authorize_device_access()
+                except Exception:
+                    pass
+                try:
+                    self.get_home_network_status()
                 except Exception:
                     pass
 

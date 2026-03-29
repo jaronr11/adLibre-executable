@@ -1,20 +1,32 @@
-import customtkinter as ctk
+import threading
 import webbrowser
-from config import COLORS, FONT, DNS_SERVER, ADLIBRE_WEBSITE
+
+import customtkinter as ctk
+
+from config import ADLIBRE_WEBSITE, COLORS, DNS_SERVER, FONT
 
 
 class MainFrame(ctk.CTkFrame):
+    HOME_NETWORK_REFRESH_MS = 30000
+
     def __init__(self, master, dns_service, auth_service, on_logout):
         super().__init__(master, fg_color=COLORS["deep_void"])
         self.master = master
         self.dns_service = dns_service
         self.auth = auth_service
         self.on_logout = on_logout
+        self._auth_check_id = None
+        self._home_network_poll_id = None
+        self._home_network_request_in_flight = False
         self.create_ui()
 
     def create_ui(self):
-        # ----------------- Status Bar -----------------
-        self.status_bar = ctk.CTkFrame(self, height=44, fg_color=COLORS["exposed_red"], corner_radius=0)
+        self.status_bar = ctk.CTkFrame(
+            self,
+            height=44,
+            fg_color=COLORS["exposed_red"],
+            corner_radius=0,
+        )
         self.status_bar.pack(fill="x")
         self.status_bar.pack_propagate(False)
 
@@ -22,22 +34,20 @@ class MainFrame(ctk.CTkFrame):
             self.status_bar,
             text="STATUS: DISCONNECTED",
             font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
-            text_color=COLORS["text_primary"]
+            text_color=COLORS["text_primary"],
         )
         self.status_label.pack(side="left", padx=20)
 
         ctk.CTkLabel(
             self.status_bar,
-            text="●",
+            text="o",
             font=ctk.CTkFont(size=16),
-            text_color=COLORS["text_primary"]
+            text_color=COLORS["text_primary"],
         ).pack(side="right", padx=20)
 
-        # ----------------- Body -----------------
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(expand=True)
+        body.pack(expand=True, fill="both", padx=28, pady=28)
 
-        # Header with logo and logout button
         header_row = ctk.CTkFrame(body, fg_color="transparent")
         header_row.pack(fill="x", anchor="w")
 
@@ -58,7 +68,7 @@ class MainFrame(ctk.CTkFrame):
             fg_color=COLORS["shield_green"],
             corner_radius=6,
             padx=10,
-            pady=2
+            pady=2,
         )
         ad_label.pack(side="left")
 
@@ -66,11 +76,10 @@ class MainFrame(ctk.CTkFrame):
             header,
             text="Libre",
             font=ctk.CTkFont(family=FONT, size=52, weight="bold"),
-            text_color=COLORS["text_primary"]
+            text_color=COLORS["text_primary"],
         )
         libre_label.pack(side="left")
 
-        # Logout button
         self.logout_button = ctk.CTkButton(
             header_row,
             text="Logout",
@@ -80,21 +89,19 @@ class MainFrame(ctk.CTkFrame):
             hover_color=COLORS["deep_void"],
             width=60,
             height=28,
-            command=self._do_logout
+            command=self._do_logout,
         )
         self.logout_button.pack(side="right", padx=(0, 10))
 
-        # Welcome message with username
         self.welcome_label = ctk.CTkLabel(
             body,
             text="Secure your connection",
             font=ctk.CTkFont(size=13),
             text_color=COLORS["text_muted"],
-            anchor="w"
+            anchor="w",
         )
-        self.welcome_label.pack(anchor="w", pady=(0, 48))
+        self.welcome_label.pack(anchor="w", pady=(0, 32))
 
-        # ----------------- Connect Button -----------------
         self.connect_button = ctk.CTkButton(
             body,
             text="[ CONNECT ]",
@@ -107,31 +114,104 @@ class MainFrame(ctk.CTkFrame):
             corner_radius=0,
             border_width=3,
             border_color=COLORS["text_primary"],
-            command=self.toggle_connection
+            command=self.toggle_connection,
         )
         self.connect_button.pack(anchor="center", pady=(24, 12))
 
-        # ----------------- Server Info -----------------
         self.server_label = ctk.CTkLabel(
             body,
             text="Server: AUTOMATIC",
             font=ctk.CTkFont(family=FONT, size=12),
             text_color=COLORS["text_muted"],
-            anchor="center"
+            anchor="center",
         )
         self.server_label.pack(anchor="center")
 
+        self.home_network_card = ctk.CTkFrame(
+            body,
+            fg_color="#111111",
+            border_width=1,
+            border_color=COLORS["text_muted"],
+            corner_radius=12,
+        )
+        self.home_network_card.pack(fill="x", pady=(28, 0))
+
+        card_header = ctk.CTkFrame(self.home_network_card, fg_color="transparent")
+        card_header.pack(fill="x", padx=16, pady=(16, 8))
+
+        ctk.CTkLabel(
+            card_header,
+            text="HOME NETWORK",
+            font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
+            text_color=COLORS["text_muted"],
+        ).pack(side="left")
+
+        self.home_network_badge = ctk.CTkLabel(
+            card_header,
+            text="CHECKING",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=COLORS["text_primary"],
+            fg_color=COLORS["text_muted"],
+            corner_radius=999,
+            padx=10,
+            pady=4,
+        )
+        self.home_network_badge.pack(side="right")
+
+        self.home_network_status_label = ctk.CTkLabel(
+            self.home_network_card,
+            text="Checking your registered home network...",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=COLORS["text_primary"],
+            anchor="w",
+            justify="left",
+        )
+        self.home_network_status_label.pack(fill="x", padx=16)
+
+        self.home_network_detail_label = ctk.CTkLabel(
+            self.home_network_card,
+            text="Current IP: --\nRegistered IP: --",
+            font=ctk.CTkFont(size=12),
+            text_color=COLORS["text_muted"],
+            anchor="w",
+            justify="left",
+        )
+        self.home_network_detail_label.pack(fill="x", padx=16, pady=(8, 8))
+
+        self.home_network_feedback_label = ctk.CTkLabel(
+            self.home_network_card,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=COLORS["shield_green"],
+            anchor="w",
+            justify="left",
+        )
+        self.home_network_feedback_label.pack(fill="x", padx=16)
+
+        self.home_network_button = ctk.CTkButton(
+            self.home_network_card,
+            text="SET HOME NETWORK",
+            font=ctk.CTkFont(family=FONT, size=12, weight="bold"),
+            fg_color=COLORS["shield_green"],
+            text_color=COLORS["deep_void"],
+            hover_color=COLORS["shield_green_hover"],
+            height=42,
+            corner_radius=8,
+            command=self.set_home_network,
+        )
+        self.home_network_button.pack(fill="x", padx=16, pady=(12, 16))
+
         self.update_connection_ui()
+        self._render_home_network(None)
 
     def set_user(self, user):
-        """Update UI with logged-in user info."""
         if user and user.get("username"):
             self.welcome_label.configure(text=f"Welcome, {user['username']}")
         else:
             self.welcome_label.configure(text="Secure your connection")
+        self.refresh_home_network_status_async()
 
     def _do_logout(self):
-        """Handle logout."""
         self.auth.logout()
         self.on_logout()
 
@@ -150,6 +230,7 @@ class MainFrame(ctk.CTkFrame):
             self.dns_service.connect()
             self.master.is_connected = True
             self.update_connection_ui()
+            self._render_home_network(self.auth.home_network)
         except Exception as e:
             self.show_error(str(e))
 
@@ -170,11 +251,11 @@ class MainFrame(ctk.CTkFrame):
                 fg_color=COLORS["shield_green"],
                 text_color=COLORS["text_primary"],
                 hover_color=COLORS["shield_green_hover"],
-                border_color=COLORS["shield_green"]
+                border_color=COLORS["shield_green"],
             )
             self.server_label.configure(
                 text=f"Server: {DNS_SERVER}",
-                text_color=COLORS["text_primary"]
+                text_color=COLORS["text_primary"],
             )
         else:
             self.status_bar.configure(fg_color=COLORS["exposed_red"])
@@ -184,31 +265,155 @@ class MainFrame(ctk.CTkFrame):
                 fg_color=COLORS["text_primary"],
                 text_color=COLORS["deep_void"],
                 hover_color=COLORS["text_muted"],
-                border_color=COLORS["text_primary"]
+                border_color=COLORS["text_primary"],
             )
             self.server_label.configure(
                 text="Server: AUTOMATIC",
-                text_color=COLORS["text_muted"]
+                text_color=COLORS["text_muted"],
             )
 
+    def _set_home_network_busy(self, busy, button_text=None):
+        self._home_network_request_in_flight = busy
+        self.home_network_button.configure(
+            state="disabled" if busy else "normal",
+            text=button_text or self.home_network_button.cget("text"),
+        )
+
+    def _render_home_network(self, home_network, message="", error=""):
+        data = home_network or self.auth.home_network or {}
+        registered = bool(data.get("is_registered"))
+        on_home_network = bool(data.get("is_on_home_network"))
+        current_ip = data.get("current_ip", "--")
+        registered_home = data.get("registered_home_network") or {}
+        registered_ip = registered_home.get("registered_ip", "Not set")
+        current_network = data.get("current_network_cidr", "--")
+        registered_network = registered_home.get("network_cidr", "--")
+
+        if on_home_network:
+            badge_text = "AT HOME"
+            badge_color = COLORS["shield_green"]
+            status_text = "You are on your registered home network."
+            status_color = COLORS["text_primary"]
+        elif registered:
+            badge_text = "AWAY"
+            badge_color = COLORS["exposed_red"]
+            status_text = "This network is not your registered home network."
+            status_color = COLORS["text_primary"]
+        else:
+            badge_text = "NOT SET"
+            badge_color = COLORS["text_muted"]
+            status_text = "No home network is registered yet."
+            status_color = COLORS["text_primary"]
+
+        if error:
+            badge_text = "UNAVAILABLE"
+            badge_color = COLORS["exposed_red"]
+            status_text = "We could not verify your home network status."
+            status_color = COLORS["exposed_red"]
+
+        self.home_network_badge.configure(text=badge_text, fg_color=badge_color)
+        self.home_network_status_label.configure(text=status_text, text_color=status_color)
+        self.home_network_detail_label.configure(
+            text=(
+                f"Current IP: {current_ip}\n"
+                f"Current network: {current_network}\n"
+                f"Registered IP: {registered_ip}\n"
+                f"Registered network: {registered_network}"
+            )
+        )
+        self.home_network_feedback_label.configure(
+            text=error or message or "",
+            text_color=COLORS["exposed_red"] if error else COLORS["shield_green"],
+        )
+        self.home_network_button.configure(
+            text="UPDATE HOME NETWORK" if registered else "SET HOME NETWORK"
+        )
+
+    def refresh_home_network_status_async(self):
+        if not self.auth.is_logged_in() or self._home_network_request_in_flight:
+            return
+
+        self._set_home_network_busy(True, self.home_network_button.cget("text"))
+
+        def worker():
+            success, home_network, error = self.auth.get_home_network_status()
+            self.after(0, lambda: self._finish_home_network_refresh(success, home_network, error))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_home_network_refresh(self, success, home_network, error):
+        self._set_home_network_busy(False)
+        if success:
+            self._render_home_network(home_network)
+        else:
+            self._render_home_network(self.auth.home_network, error=error)
+
+    def set_home_network(self):
+        if not self.auth.is_logged_in() or self._home_network_request_in_flight:
+            return
+
+        self._set_home_network_busy(True, "SETTING...")
+        self.home_network_feedback_label.configure(text="")
+
+        def worker():
+            success, home_network, message = self.auth.set_home_network()
+            self.after(
+                0,
+                lambda: self._finish_set_home_network(success, home_network, message),
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_set_home_network(self, success, home_network, message):
+        self._set_home_network_busy(False)
+        if success:
+            self._render_home_network(
+                home_network,
+                message=message or "Home network updated successfully.",
+            )
+        else:
+            self._render_home_network(self.auth.home_network, error=message)
+
     def start_auth_check(self):
-        """Start a 1-second polling loop that checks the authorization timestamp."""
         self._check_auth_loop()
 
     def _check_auth_loop(self):
-        """Every 1 second, check if authorization is still valid.
-        If stale, re-ping the server. Reconnect if sub is active, disconnect if not."""
-        if self.master.is_connected:
+        if self.master.is_connected and not self.auth.is_authorized():
             success, error_msg = self.auth.authorize_device_access()
             if not success:
                 self.disconnect()
                 self.show_error(f"Authorization failed: {error_msg}")
+            else:
+                self._render_home_network(self.auth.home_network)
         self._auth_check_id = self.after(1000, self._check_auth_loop)
 
     def stop_auth_check(self):
-        """Stop the 1-second auth check loop."""
-        if hasattr(self, '_auth_check_id'):
+        if self._auth_check_id:
             self.after_cancel(self._auth_check_id)
+            self._auth_check_id = None
+
+    def start_home_network_polling(self):
+        if self._home_network_poll_id is not None:
+            return
+
+        self.refresh_home_network_status_async()
+        self._schedule_home_network_poll()
+
+    def _schedule_home_network_poll(self):
+        self._home_network_poll_id = self.after(
+            self.HOME_NETWORK_REFRESH_MS,
+            self._home_network_poll_loop,
+        )
+
+    def _home_network_poll_loop(self):
+        self._home_network_poll_id = None
+        self.refresh_home_network_status_async()
+        self._schedule_home_network_poll()
+
+    def stop_home_network_polling(self):
+        if self._home_network_poll_id is not None:
+            self.after_cancel(self._home_network_poll_id)
+            self._home_network_poll_id = None
 
     def show_error(self, message: str):
         self.status_label.configure(text=message)

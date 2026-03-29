@@ -1,3 +1,4 @@
+import os
 import platform
 import customtkinter as ctk
 
@@ -16,4 +17,5 @@ COLORS = {
 }
 
 DNS_SERVER = "96.126.124.117"
+API_BASE = os.getenv("ADLIBRE_API_BASE", "https://adlibre.org")
 ADLIBRE_WEBSITE = "https://adlibre.org/"
