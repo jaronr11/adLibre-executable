@@ -3,3 +3,4 @@
 - Make app fully have administrator purposes, after approving once.
 - License for exe, and notary for DMG
 - License for Linux?
+- Make app work for ethernet
