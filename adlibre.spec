@@ -52,6 +52,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=win_icon if sys.platform == 'win32' else mac_icon,
+    uac_admin=True if sys.platform == 'win32' else False,
 )
 
 # Collect all files for distribution
