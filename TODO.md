@@ -1,4 +1,4 @@
-- Change build to setup with Inno 
+- ~~Change build to setup with Inno~~
 - Still get authorization error when logging in from inactive account (connecting) to active account
 - Make app fully have administrator purposes, after approving once.
 - License for exe, and notary for DMG
