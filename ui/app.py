@@ -18,6 +18,8 @@ class DNSChangerApp(ctk.CTk):
         self.auth = AuthService()
         self.dns = DNSService(DNS_SERVER)
         self.is_connected = False
+        self.startup_notice = self.dns.recover_windows_state_if_needed()
+        self.protocol("WM_DELETE_WINDOW", self.handle_close)
 
         self.login_frame = LoginFrame(self, auth_service=self.auth, on_login_success=self.handle_login)
         self.main_frame = MainFrame(self, dns_service=self.dns, auth_service=self.auth, on_logout=self.handle_logout)
@@ -26,6 +28,7 @@ class DNSChangerApp(ctk.CTk):
         if self.auth.is_logged_in():
             self.main_frame.set_user(self.auth.user)
             self.show_main()
+            self.main_frame.set_connection_notice(self.startup_notice)
             self.auth.start_periodic_tasks(interval_seconds=300)
             self.main_frame.start_auth_check()
             self.main_frame.start_home_network_polling()
@@ -44,6 +47,8 @@ class DNSChangerApp(ctk.CTk):
         """Called when OAuth login succeeds."""
         self.main_frame.set_user(user)
         self.show_main()
+        self.main_frame.set_connection_notice(self.startup_notice)
+        self.startup_notice = None
         # Start periodic tasks to refresh token and authorize device every 5 minutes
         self.auth.start_periodic_tasks(interval_seconds=300)
         # Start 1-second auth timestamp check
@@ -56,5 +61,24 @@ class DNSChangerApp(ctk.CTk):
         self.auth.stop_periodic_tasks()
         self.main_frame.stop_auth_check()
         self.main_frame.stop_home_network_polling()
+        if self.is_connected:
+            try:
+                notice = self.dns.disconnect()
+            except Exception:
+                notice = None
+            self.is_connected = False
+            self.main_frame.update_connection_ui()
+            self.main_frame.set_connection_notice(notice)
         self.login_frame._reset_button()
         self.show_login()
+
+    def handle_close(self):
+        self.auth.stop_periodic_tasks()
+        self.main_frame.stop_auth_check()
+        self.main_frame.stop_home_network_polling()
+        if self.is_connected:
+            try:
+                self.dns.disconnect()
+            except Exception:
+                pass
+        self.destroy()

@@ -38,6 +38,18 @@ def build_executable():
         '--workpath', str(SCRIPT_DIR / 'build'),
     ], check=True)
 
+
+def remove_misleading_work_executable():
+    """
+    PyInstaller may leave a work-in-progress EXE under build/.
+    That file is not the supported app to launch, so remove it after a
+    successful build to avoid accidental use.
+    """
+    work_exe = SCRIPT_DIR / 'build' / 'adlibre' / 'adLibre.exe'
+    if work_exe.exists():
+        work_exe.unlink()
+        print("Removed build/adlibre/adLibre.exe (use dist output instead)")
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Build adLibre executable')
@@ -67,6 +79,7 @@ def main():
     # Build
     print("\n[3/3] Building executable...")
     build_executable()
+    remove_misleading_work_executable()
 
     # Report results
     dist_path = SCRIPT_DIR / 'dist'

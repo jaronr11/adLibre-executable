@@ -17,5 +17,13 @@ COLORS = {
 }
 
 DNS_SERVER = "96.126.124.117"
-API_BASE = os.getenv("ADLIBRE_API_BASE", "https://adlibre.org")
+API_BASES = [
+    base.strip()
+    for base in os.getenv(
+        "ADLIBRE_API_BASES",
+        "http://45.79.9.188,https://adlibre.org",
+    ).split(",")
+    if base.strip()
+]
+API_BASE = API_BASES[0]
 ADLIBRE_WEBSITE = "https://adlibre.org/"

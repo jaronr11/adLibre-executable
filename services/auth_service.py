@@ -14,17 +14,20 @@ from urllib.parse import urlparse, parse_qs
 import json
 from pathlib import Path
 
-from config import API_BASE as DEFAULT_API_BASE
+from config import API_BASE as DEFAULT_API_BASE, API_BASES as DEFAULT_API_BASES
 
 
 class AuthService:
     CLIENT_ID = "adlibre-desktop"
     REDIRECT_URI = "https://adlibre.org/callback"
     API_BASE = DEFAULT_API_BASE
+    API_BASES = tuple(DEFAULT_API_BASES) if DEFAULT_API_BASES else (DEFAULT_API_BASE,)
     
     TOKEN_FILE = Path.home() / ".adlibre" / "tokens.json"
     
     def __init__(self):
+        self.api_bases = self._normalize_api_bases(self.API_BASES)
+        self.API_BASE = self.api_bases[0]
         self.access_token = None
         self.refresh_token = None
         self.user = None
@@ -35,6 +38,105 @@ class AuthService:
         self.last_authorized = None  # timestamp of last successful authorization
         self.home_network = None
         self.AUTH_TIMEOUT = 330 # seconds before authorization is considered stale (5min + 30s grace)
+
+    @staticmethod
+    def _normalize_api_bases(bases):
+        seen = set()
+        normalized = []
+
+        for base in bases or []:
+            candidate = str(base or "").strip().rstrip("/")
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+
+        fallback = str(DEFAULT_API_BASE or "").strip().rstrip("/")
+        if not normalized and fallback:
+            normalized.append(fallback)
+
+        return normalized
+
+    def _request_first_available(self, method, path, *, bases=None, fallback_statuses=(404,), **kwargs):
+        candidates = self._normalize_api_bases(bases or self.api_bases)
+        last_response = None
+        last_error = None
+
+        for base in candidates:
+            try:
+                response = requests.request(
+                    method,
+                    f"{base}{path}",
+                    **kwargs,
+                )
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+                continue
+
+            if response.status_code in fallback_statuses:
+                last_response = (response, base)
+                continue
+
+            return response, base
+
+        if last_response is not None:
+            return last_response
+
+        if last_error is not None:
+            raise last_error
+
+        raise RuntimeError("No API endpoints configured.")
+
+    def _request_all_bases(self, method, path, **kwargs):
+        candidates = self._normalize_api_bases(self.api_bases)
+        results = []
+
+        for base in candidates:
+            try:
+                response = requests.request(
+                    method,
+                    f"{base}{path}",
+                    **kwargs,
+                )
+                results.append((base, response, None))
+            except requests.exceptions.RequestException as exc:
+                results.append((base, None, exc))
+
+        return results
+
+    @staticmethod
+    def _label_api_base(base):
+        return base.replace("http://", "").replace("https://", "")
+
+    def _request_json_from_any_base(self, method, path, **kwargs):
+        results = self._request_all_bases(method, path, **kwargs)
+        errors = []
+
+        for base, resp, request_error in results:
+            if request_error is not None:
+                errors.append(
+                    f"{self._label_api_base(base)}: "
+                    f"{request_error.__class__.__name__}: {request_error}"
+                )
+                continue
+
+            if resp.status_code >= 400:
+                error_msg, _data = self._extract_error_message(resp)
+                errors.append(f"{self._label_api_base(base)}: {error_msg}")
+                continue
+
+            try:
+                data = resp.json()
+            except Exception:
+                errors.append(f"{self._label_api_base(base)}: Invalid server response")
+                continue
+
+            return True, data, None
+
+        if errors:
+            return False, None, "; ".join(errors)
+
+        return False, None, "No API response"
     
     def _generate_pkce(self):
         """Generate PKCE code_verifier and code_challenge."""
@@ -87,8 +189,9 @@ class AuthService:
 
         # Start the auth flow
         try:
-            resp = requests.post(
-                f"{self.API_BASE}/api/app-auth/start",
+            resp, auth_base = self._request_first_available(
+                "POST",
+                "/api/app-auth/start",
                 json={
                     "client_id": self.CLIENT_ID,
                     "redirect_uri": self.REDIRECT_URI,
@@ -118,8 +221,10 @@ class AuthService:
         while time.time() < deadline:
             time.sleep(2)
             try:
-                poll = requests.get(
-                    f"{self.API_BASE}/api/app-auth/check",
+                poll, _ = self._request_first_available(
+                    "GET",
+                    "/api/app-auth/check",
+                    bases=[auth_base],
                     params={"request_id": request_id},
                     timeout=10,
                 )
@@ -147,8 +252,10 @@ class AuthService:
 
         # Exchange code for tokens
         try:
-            resp = requests.post(
-                f"{self.API_BASE}/api/app-auth/token",
+            resp, _ = self._request_first_available(
+                "POST",
+                "/api/app-auth/token",
+                bases=[auth_base],
                 json={
                     "client_id": self.CLIENT_ID,
                     "code": auth_code,
@@ -186,8 +293,9 @@ class AuthService:
             return False
         
         try:
-            resp = requests.post(
-                f"{self.API_BASE}/api/app-auth/refresh",
+            resp, _ = self._request_first_available(
+                "POST",
+                "/api/app-auth/refresh",
                 json={
                     "client_id": self.CLIENT_ID,
                     "refresh_token": self.refresh_token,
@@ -206,8 +314,9 @@ class AuthService:
         """Logout and revoke tokens."""
         if self.refresh_token:
             try:
-                requests.post(
-                    f"{self.API_BASE}/api/app-auth/revoke",
+                self._request_first_available(
+                    "POST",
+                    "/api/app-auth/revoke",
                     json={"refresh_token": self.refresh_token},
                     timeout=10,
                 )
@@ -226,6 +335,8 @@ class AuthService:
         try:
             data = response.json()
         except Exception:
+            if response.status_code == 404:
+                return "This feature is not available on the current server yet.", None
             return f"Request failed (HTTP {response.status_code})", None
 
         message = (
@@ -255,31 +366,61 @@ class AuthService:
             return (False, "Not authenticated")
         
         try:
-            resp = requests.post(
-                f"{self.API_BASE}/api/app-auth/device-access",
+            results = self._request_all_bases(
+                "POST",
+                "/api/app-auth/device-access",
                 headers=self.get_auth_header(),
                 json={},
                 timeout=10,
             )
-            
-            if resp.status_code >= 400:
-                error_msg, _data = self._extract_error_message(resp)
-                return (False, error_msg)
-            
-            try:
-                data = resp.json()
-            except Exception:
-                return (False, "Invalid server response")
-            
-            self._store_home_network(data)
 
-            if data.get("status") != "ok":
-                return (False, data.get("error") or data.get("message") or "DNS server denied access")
-            
-            self.last_authorized = time.time()
-            print(f"Device authorized. Active devices: {data.get('active_devices', 'unknown')}")
-            return (True, None)
-            
+            success_bases = []
+            errors = []
+            active_devices = None
+
+            for base, resp, request_error in results:
+                if request_error is not None:
+                    errors.append(
+                        f"{self._label_api_base(base)}: "
+                        f"{request_error.__class__.__name__}: {request_error}"
+                    )
+                    continue
+
+                if resp.status_code >= 400:
+                    error_msg, _data = self._extract_error_message(resp)
+                    errors.append(f"{self._label_api_base(base)}: {error_msg}")
+                    continue
+
+                try:
+                    data = resp.json()
+                except Exception:
+                    errors.append(f"{self._label_api_base(base)}: Invalid server response")
+                    continue
+
+                self._store_home_network(data)
+                if data.get("status") == "ok":
+                    success_bases.append(self._label_api_base(base))
+                    active_devices = data.get("active_devices", active_devices)
+                    continue
+
+                errors.append(
+                    f"{self._label_api_base(base)}: "
+                    f"{data.get('error') or data.get('message') or 'DNS server denied access'}"
+                )
+
+            if success_bases:
+                self.last_authorized = time.time()
+                print(
+                    "Device authorized via "
+                    f"{', '.join(success_bases)}. "
+                    f"Active devices: {active_devices if active_devices is not None else 'unknown'}"
+                )
+                return (True, None)
+
+            if errors:
+                return (False, "; ".join(errors))
+
+            return (False, "Authorization failed: no API response")
         except requests.exceptions.Timeout:
             return (False, "Request timeout - check your connection")
         except requests.exceptions.ConnectionError:
@@ -293,17 +434,14 @@ class AuthService:
             return (False, None, "Not authenticated")
 
         try:
-            resp = requests.get(
-                f"{self.API_BASE}/api/app-auth/home-network",
+            success, data, error = self._request_json_from_any_base(
+                "GET",
+                "/api/app-auth/home-network",
                 headers=self.get_auth_header(),
                 timeout=10,
             )
-
-            if resp.status_code >= 400:
-                error_msg, _data = self._extract_error_message(resp)
-                return (False, None, error_msg)
-
-            data = resp.json()
+            if not success:
+                return (False, None, error)
             home_network = self._store_home_network(data)
             return (True, home_network, None)
         except requests.exceptions.Timeout:
@@ -319,18 +457,15 @@ class AuthService:
             return (False, None, "Not authenticated")
 
         try:
-            resp = requests.post(
-                f"{self.API_BASE}/api/app-auth/home-network",
+            success, data, error = self._request_json_from_any_base(
+                "POST",
+                "/api/app-auth/home-network",
                 headers=self.get_auth_header(),
                 json={},
                 timeout=10,
             )
-
-            if resp.status_code >= 400:
-                error_msg, _data = self._extract_error_message(resp)
-                return (False, None, error_msg)
-
-            data = resp.json()
+            if not success:
+                return (False, None, error)
             home_network = self._store_home_network(data)
             return (True, home_network, data.get("message"))
         except requests.exceptions.Timeout:

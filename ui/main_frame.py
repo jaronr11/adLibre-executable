@@ -127,6 +127,16 @@ class MainFrame(ctk.CTkFrame):
         )
         self.server_label.pack(anchor="center")
 
+        self.connection_notice_label = ctk.CTkLabel(
+            body,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color=COLORS["text_muted"],
+            anchor="center",
+            justify="center",
+        )
+        self.connection_notice_label.pack(anchor="center", pady=(8, 0))
+
         self.home_network_card = ctk.CTkFrame(
             body,
             fg_color="#111111",
@@ -227,18 +237,20 @@ class MainFrame(ctk.CTkFrame):
             if not success:
                 self.show_error(f"Authorization failed: {error_msg}")
                 return
-            self.dns_service.connect()
+            notice = self.dns_service.connect()
             self.master.is_connected = True
             self.update_connection_ui()
+            self.set_connection_notice(notice)
             self._render_home_network(self.auth.home_network)
         except Exception as e:
             self.show_error(str(e))
 
     def disconnect(self):
         try:
-            self.dns_service.disconnect()
+            notice = self.dns_service.disconnect()
             self.master.is_connected = False
             self.update_connection_ui()
+            self.set_connection_notice(notice)
         except Exception as e:
             self.show_error(str(e))
 
@@ -271,6 +283,9 @@ class MainFrame(ctk.CTkFrame):
                 text="Server: AUTOMATIC",
                 text_color=COLORS["text_muted"],
             )
+
+    def set_connection_notice(self, message=""):
+        self.connection_notice_label.configure(text=message or "")
 
     def _set_home_network_busy(self, busy, button_text=None):
         self._home_network_request_in_flight = busy
