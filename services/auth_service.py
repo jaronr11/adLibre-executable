@@ -296,7 +296,7 @@ class AuthService:
             resp = requests.get(
                 f"{self.API_BASE}/api/app-auth/home-network",
                 headers=self.get_auth_header(),
-                timeout=10,
+                timeout=10000,
             )
 
             if resp.status_code >= 400:
@@ -313,32 +313,38 @@ class AuthService:
         except Exception as e:
             return (False, None, f"Home network lookup failed: {str(e)}")
 
-    def set_home_network(self):
-        """Register the current public IP as the user's home network."""
+    def set_home_network(self, force=False):
+        """Register the current public IP as the user's home network.
+        Returns (success, home_network, message, error_code).
+        error_code is "OUTSIDE_HOME_NETWORK" when overwrite protection triggers.
+        """
         if not self.access_token:
-            return (False, None, "Not authenticated")
-
+            return (False, None, "Not authenticated", "")
         try:
+            payload = {"force": True} if force else {}
             resp = requests.post(
                 f"{self.API_BASE}/api/app-auth/home-network",
                 headers=self.get_auth_header(),
-                json={},
-                timeout=10,
+                json=payload,
+                timeout=100,
             )
-
             if resp.status_code >= 400:
                 error_msg, _data = self._extract_error_message(resp)
-                return (False, None, error_msg)
-
+                error_code = ""
+                try:
+                    error_code = resp.json().get("code", "")
+                except Exception:
+                    pass
+                return (False, None, error_msg, error_code)
             data = resp.json()
             home_network = self._store_home_network(data)
-            return (True, home_network, data.get("message"))
+            return (True, home_network, data.get("message"), "")
         except requests.exceptions.Timeout:
-            return (False, None, "Request timeout - check your connection")
+            return (False, None, "Request timeout - check your connection", "")
         except requests.exceptions.ConnectionError:
-            return (False, None, "Connection error - check your internet")
+            return (False, None, "Connection error - check your internet", "")
         except Exception as e:
-            return (False, None, f"Failed to set home network: {str(e)}")
+            return (False, None, f"Failed to set home network: {str(e)}", "")
         
     
     def is_authorized(self):
