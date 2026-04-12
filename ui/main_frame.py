@@ -205,8 +205,17 @@ class MainFrame(ctk.CTkFrame):
         self._render_home_network(None)
 
     def set_user(self, user):
-        if user and user.get("username"):
-            self.welcome_label.configure(text=f"Welcome, {user['username']}")
+        if user:
+            name = (user.get("name") or "").strip()
+            email = (user.get("email") or "").strip()
+            if name:
+                display = name.split()[0]
+            elif email and "@" in email:
+                display = email.split("@", 1)[0]
+            else:
+                display = email
+            if display:
+                self.welcome_label.configure(text=f"Welcome, {display}")
         else:
             self.welcome_label.configure(text="Secure your connection")
         self.refresh_home_network_status_async()
