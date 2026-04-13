@@ -1,3 +1,7 @@
+import os
+import platform
+import shutil
+import subprocess
 import threading
 import webbrowser
 
@@ -309,11 +313,66 @@ class MainFrame(ctk.CTkFrame):
     def _flush_browser_dns(self):
         """Open chrome://net-internals/#dns so the user can one-click
         Clear host cache. Chrome keeps its own host cache + socket pool
-        that an OS-level DNS flush does not touch."""
+        that an OS-level DNS flush does not touch.
+
+        chrome:// URLs are a browser-internal scheme, not a web URI, so
+        the OS URL handler usually can't resolve them (Windows shows a
+        "Get an app to open this link" dialog). We have to launch a
+        Chromium binary directly with the URL as an argument.
+        """
+        url = "chrome://net-internals/#dns"
+        browser = self._find_chromium_browser()
+        if browser:
+            try:
+                subprocess.Popen([browser, url], close_fds=True)
+                return
+            except Exception:
+                pass
+        # Last resort: hand off to the default browser. On Windows this
+        # will likely show the "get an app" dialog for chrome:// URLs,
+        # but on macOS it may still succeed if Chrome is the handler.
         try:
-            webbrowser.open("chrome://net-internals/#dns")
+            webbrowser.open(url)
         except Exception:
             pass
+
+    @staticmethod
+    def _find_chromium_browser():
+        """Return a path to an installed Chromium-based browser, or
+        None if none is found. Chrome is preferred; Edge and Brave are
+        fallbacks since they also handle chrome:// URLs."""
+        system = platform.system()
+        if system == "Windows":
+            candidates = [
+                r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+                r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+                r"%LocalAppData%\Google\Chrome\Application\chrome.exe",
+                r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+                r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+                r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"%ProgramFiles(x86)%\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"%LocalAppData%\BraveSoftware\Brave-Browser\Application\brave.exe",
+            ]
+            for raw in candidates:
+                path = os.path.expandvars(raw)
+                if path and os.path.exists(path):
+                    return path
+        elif system == "Darwin":
+            candidates = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    return path
+        else:
+            for name in ("google-chrome", "chromium", "chromium-browser",
+                         "microsoft-edge", "brave-browser"):
+                path = shutil.which(name)
+                if path:
+                    return path
+        return None
 
     def _set_home_network_busy(self, busy, button_text=None):
         self._home_network_request_in_flight = busy
