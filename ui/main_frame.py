@@ -127,6 +127,36 @@ class MainFrame(ctk.CTkFrame):
         )
         self.server_label.pack(anchor="center")
 
+        # Shown only while connected. The OS DNS cache is already flushed
+        # by DNSService, but Chrome keeps its own internal host cache and
+        # socket pool that an external process can't touch — so tell the
+        # user how to clear them for instant full blocking.
+        self.browser_hint_container = ctk.CTkFrame(body, fg_color="transparent")
+
+        self.browser_hint_label = ctk.CTkLabel(
+            self.browser_hint_container,
+            text="Tip: Restart your browser for full ad-blocking.",
+            font=ctk.CTkFont(size=11),
+            text_color=COLORS["text_muted"],
+        )
+        self.browser_hint_label.pack()
+
+        self.flush_browser_button = ctk.CTkButton(
+            self.browser_hint_container,
+            text="Flush browser DNS",
+            font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
+            fg_color="transparent",
+            text_color=COLORS["shield_green"],
+            hover_color=COLORS["deep_void"],
+            border_width=1,
+            border_color=COLORS["shield_green"],
+            corner_radius=6,
+            height=26,
+            width=160,
+            command=self._flush_browser_dns,
+        )
+        self.flush_browser_button.pack(pady=(6, 0))
+
         self.home_network_card = ctk.CTkFrame(
             body,
             fg_color="#111111",
@@ -257,6 +287,9 @@ class MainFrame(ctk.CTkFrame):
                 text=f"Server: {DNS_SERVER}",
                 text_color=COLORS["text_primary"],
             )
+            self.browser_hint_container.pack(
+                anchor="center", pady=(10, 0), before=self.home_network_card
+            )
         else:
             self.status_bar.configure(fg_color=COLORS["exposed_red"])
             self.status_label.configure(text="STATUS: DISCONNECTED")
@@ -271,6 +304,16 @@ class MainFrame(ctk.CTkFrame):
                 text="Server: AUTOMATIC",
                 text_color=COLORS["text_muted"],
             )
+            self.browser_hint_container.pack_forget()
+
+    def _flush_browser_dns(self):
+        """Open chrome://net-internals/#dns so the user can one-click
+        Clear host cache. Chrome keeps its own host cache + socket pool
+        that an OS-level DNS flush does not touch."""
+        try:
+            webbrowser.open("chrome://net-internals/#dns")
+        except Exception:
+            pass
 
     def _set_home_network_busy(self, busy, button_text=None):
         self._home_network_request_in_flight = busy
