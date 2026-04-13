@@ -147,7 +147,7 @@ class MainFrame(ctk.CTkFrame):
 
         self.flush_browser_button = ctk.CTkButton(
             self.browser_hint_container,
-            text="Flush browser DNS",
+            text="Flush browser caches",
             font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
             fg_color="transparent",
             text_color=COLORS["shield_green"],
@@ -311,30 +311,40 @@ class MainFrame(ctk.CTkFrame):
             self.browser_hint_container.pack_forget()
 
     def _flush_browser_dns(self):
-        """Open chrome://net-internals/#dns so the user can one-click
-        Clear host cache. Chrome keeps its own host cache + socket pool
-        that an OS-level DNS flush does not touch.
+        """Open Chrome's cache inspection pages so the user can one-click
+        Clear host cache AND Flush socket pools.
+
+        Clearing only the host cache is not enough: Chrome keeps
+        keep-alive TCP / HTTP2 / QUIC sockets open to already-resolved
+        servers and reuses them for minutes without re-resolving DNS, so
+        ads served over those existing connections leak through even
+        after the host cache is empty. Flushing socket pools drops those
+        reused connections.
 
         chrome:// URLs are a browser-internal scheme, not a web URI, so
         the OS URL handler usually can't resolve them (Windows shows a
         "Get an app to open this link" dialog). We have to launch a
-        Chromium binary directly with the URL as an argument.
+        Chromium binary directly with the URLs as arguments.
         """
-        url = "chrome://net-internals/#dns"
+        urls = [
+            "chrome://net-internals/#dns",
+            "chrome://net-internals/#sockets",
+        ]
         browser = self._find_chromium_browser()
         if browser:
             try:
-                subprocess.Popen([browser, url], close_fds=True)
+                subprocess.Popen([browser, *urls], close_fds=True)
                 return
             except Exception:
                 pass
         # Last resort: hand off to the default browser. On Windows this
         # will likely show the "get an app" dialog for chrome:// URLs,
         # but on macOS it may still succeed if Chrome is the handler.
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
+        for url in urls:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
 
     @staticmethod
     def _find_chromium_browser():
