@@ -1,3 +1,7 @@
+import os
+import platform
+import shutil
+import subprocess
 import threading
 import webbrowser
 
@@ -126,6 +130,36 @@ class MainFrame(ctk.CTkFrame):
             anchor="center",
         )
         self.server_label.pack(anchor="center")
+
+        # Shown only while connected. The OS DNS cache is already flushed
+        # by DNSService, but Chrome keeps its own internal host cache and
+        # socket pool that an external process can't touch — so tell the
+        # user how to clear them for instant full blocking.
+        self.browser_hint_container = ctk.CTkFrame(body, fg_color="transparent")
+
+        self.browser_hint_label = ctk.CTkLabel(
+            self.browser_hint_container,
+            text="Tip: Restart your browser for full ad-blocking.",
+            font=ctk.CTkFont(size=11),
+            text_color=COLORS["text_muted"],
+        )
+        self.browser_hint_label.pack()
+
+        self.flush_browser_button = ctk.CTkButton(
+            self.browser_hint_container,
+            text="Flush browser caches",
+            font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
+            fg_color="transparent",
+            text_color=COLORS["shield_green"],
+            hover_color=COLORS["deep_void"],
+            border_width=1,
+            border_color=COLORS["shield_green"],
+            corner_radius=6,
+            height=26,
+            width=160,
+            command=self._flush_browser_dns,
+        )
+        self.flush_browser_button.pack(pady=(6, 0))
 
         self.home_network_card = ctk.CTkFrame(
             body,
@@ -266,6 +300,9 @@ class MainFrame(ctk.CTkFrame):
                 text=f"Server: {DNS_SERVER}",
                 text_color=COLORS["text_primary"],
             )
+            self.browser_hint_container.pack(
+                anchor="center", pady=(10, 0), before=self.home_network_card
+            )
         else:
             self.status_bar.configure(fg_color=COLORS["exposed_red"])
             self.status_label.configure(text="STATUS: DISCONNECTED")
@@ -280,6 +317,81 @@ class MainFrame(ctk.CTkFrame):
                 text="Server: AUTOMATIC",
                 text_color=COLORS["text_muted"],
             )
+            self.browser_hint_container.pack_forget()
+
+    def _flush_browser_dns(self):
+        """Open Chrome's cache inspection pages so the user can one-click
+        Clear host cache AND Flush socket pools.
+
+        Clearing only the host cache is not enough: Chrome keeps
+        keep-alive TCP / HTTP2 / QUIC sockets open to already-resolved
+        servers and reuses them for minutes without re-resolving DNS, so
+        ads served over those existing connections leak through even
+        after the host cache is empty. Flushing socket pools drops those
+        reused connections.
+
+        chrome:// URLs are a browser-internal scheme, not a web URI, so
+        the OS URL handler usually can't resolve them (Windows shows a
+        "Get an app to open this link" dialog). We have to launch a
+        Chromium binary directly with the URLs as arguments.
+        """
+        urls = [
+            "chrome://net-internals/#dns",
+            "chrome://net-internals/#sockets",
+        ]
+        browser = self._find_chromium_browser()
+        if browser:
+            try:
+                subprocess.Popen([browser, *urls], close_fds=True)
+                return
+            except Exception:
+                pass
+        # Last resort: hand off to the default browser. On Windows this
+        # will likely show the "get an app" dialog for chrome:// URLs,
+        # but on macOS it may still succeed if Chrome is the handler.
+        for url in urls:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _find_chromium_browser():
+        """Return a path to an installed Chromium-based browser, or
+        None if none is found. Chrome is preferred; Edge and Brave are
+        fallbacks since they also handle chrome:// URLs."""
+        system = platform.system()
+        if system == "Windows":
+            candidates = [
+                r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+                r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+                r"%LocalAppData%\Google\Chrome\Application\chrome.exe",
+                r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+                r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+                r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"%ProgramFiles(x86)%\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"%LocalAppData%\BraveSoftware\Brave-Browser\Application\brave.exe",
+            ]
+            for raw in candidates:
+                path = os.path.expandvars(raw)
+                if path and os.path.exists(path):
+                    return path
+        elif system == "Darwin":
+            candidates = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    return path
+        else:
+            for name in ("google-chrome", "chromium", "chromium-browser",
+                         "microsoft-edge", "brave-browser"):
+                path = shutil.which(name)
+                if path:
+                    return path
+        return None
 
     def _set_home_network_busy(self, busy, button_text=None):
         self._home_network_request_in_flight = busy
