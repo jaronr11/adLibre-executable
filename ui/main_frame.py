@@ -235,6 +235,48 @@ class MainFrame(ctk.CTkFrame):
         )
         self.home_network_button.pack(fill="x", padx=16, pady=(12, 16))
 
+        self.exempt_container = ctk.CTkFrame(body, fg_color="transparent")
+        self.exempt_container.pack(fill="x", pady=(16, 0))
+
+        self.exempt_tip = ctk.CTkLabel(
+            self.exempt_container,
+            text="Tip: Exempt this device if ad-blocking interferes with work tools.",
+            font=ctk.CTkFont(size=11),
+            text_color=COLORS["text_muted"],
+        )
+        self.exempt_tip.pack(pady=(0, 6))
+
+        self.exempt_button = ctk.CTkButton(
+            self.exempt_container,
+            text="Exempt this device from ad-blocking",
+            font=ctk.CTkFont(family=FONT, size=12, weight="bold"),
+            fg_color="transparent",
+            text_color=COLORS["text_muted"],
+            hover_color="#1a1a1a",
+            border_width=1,
+            border_color=COLORS["text_muted"],
+            height=36,
+            corner_radius=8,
+            command=self._exempt_device,
+        )
+        self.exempt_button.pack(fill="x")
+
+        self.undo_exempt_button = ctk.CTkButton(
+            self.exempt_container,
+            text="Undo ad-block exemption",
+            font=ctk.CTkFont(family=FONT, size=12, weight="bold"),
+            fg_color="transparent",
+            text_color=COLORS["exposed_red"],
+            hover_color="#1a1a1a",
+            border_width=1,
+            border_color=COLORS["exposed_red"],
+            height=36,
+            corner_radius=8,
+            command=self._undo_exempt_device,
+        )
+
+        self._is_exempt = False
+
         self.update_connection_ui()
         self._render_home_network(None)
 
@@ -284,6 +326,22 @@ class MainFrame(ctk.CTkFrame):
             self.update_connection_ui()
         except Exception as e:
             self.show_error(str(e))
+
+    def _exempt_device(self):
+        """Re-enable IPv6 so this device bypasses DNS-based ad-blocking."""
+        self.dns_service.enable_ipv6()
+        self._is_exempt = True
+        self.exempt_button.pack_forget()
+        self.undo_exempt_button.pack(fill="x")
+        self.exempt_tip.configure(text="This device is currently exempted from ad-blocking.")
+
+    def _undo_exempt_device(self):
+        """Disable IPv6 again to restore ad-blocking."""
+        self.dns_service.disable_ipv6()
+        self._is_exempt = False
+        self.undo_exempt_button.pack_forget()
+        self.exempt_button.pack(fill="x")
+        self.exempt_tip.configure(text="Tip: Exempt this device if ad-blocking interferes with work tools.")
 
     def update_connection_ui(self):
         if self.master.is_connected:
