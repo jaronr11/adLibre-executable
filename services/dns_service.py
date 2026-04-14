@@ -20,6 +20,40 @@ class DNSService:
             subprocess.run('netsh interface ip set dns name="Wi-Fi" dhcp', shell=True, check=True)
         self._flush_dns_cache()
 
+    def disable_ipv6(self):
+        """Disable IPv6 on all network adapters.
+
+        IPv6 bypasses the IPv4 DNS server we set, so domains that resolve
+        over IPv6 skip ad-blocking entirely.  Disabling IPv6 forces all
+        lookups through our ad-blocking DNS.
+
+        Uses PowerShell Disable-NetAdapterBinding on Windows to disable
+        IPv6 across all adapters (not just Wi-Fi).
+        """
+        try:
+            if platform.system() == "Darwin":
+                subprocess.run("networksetup -setv6off Wi-Fi", shell=True, check=False)
+            else:
+                subprocess.run(
+                    'powershell -Command "Disable-NetAdapterBinding -Name * -ComponentID ms_tcpip6"',
+                    shell=True, check=False,
+                )
+        except Exception:
+            pass
+
+    def enable_ipv6(self):
+        """Re-enable IPv6 on all network adapters."""
+        try:
+            if platform.system() == "Darwin":
+                subprocess.run("networksetup -setv6automatic Wi-Fi", shell=True, check=False)
+            else:
+                subprocess.run(
+                    'powershell -Command "Enable-NetAdapterBinding -Name * -ComponentID ms_tcpip6"',
+                    shell=True, check=False,
+                )
+        except Exception:
+            pass
+
     def _flush_dns_cache(self):
         """Flush the OS DNS resolver cache.
 

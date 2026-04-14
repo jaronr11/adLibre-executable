@@ -11,12 +11,13 @@ class DNSChangerApp(ctk.CTk):
         super().__init__()
 
         self.title("adLibre")
-        self.geometry("420x640")
+        self.geometry("420x760")
         self.configure(fg_color=COLORS["deep_void"])
         self.resizable(False, False)
 
         self.auth = AuthService()
         self.dns = DNSService(DNS_SERVER)
+        self.dns.disable_ipv6()
         self.is_connected = False
 
         self.login_frame = LoginFrame(self, auth_service=self.auth, on_login_success=self.handle_login)
