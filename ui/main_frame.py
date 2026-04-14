@@ -205,8 +205,17 @@ class MainFrame(ctk.CTkFrame):
         self._render_home_network(None)
 
     def set_user(self, user):
-        if user and user.get("username"):
-            self.welcome_label.configure(text=f"Welcome, {user['username']}")
+        if user:
+            name = (user.get("name") or "").strip()
+            email = (user.get("email") or "").strip()
+            if name:
+                display = name.split()[0]
+            elif email and "@" in email:
+                display = email.split("@", 1)[0]
+            else:
+                display = email
+            if display:
+                self.welcome_label.configure(text=f"Welcome, {display}")
         else:
             self.welcome_label.configure(text="Secure your connection")
         self.refresh_home_network_status_async()
@@ -348,31 +357,69 @@ class MainFrame(ctk.CTkFrame):
         else:
             self._render_home_network(self.auth.home_network, error=error)
 
-    def set_home_network(self):
+    def set_home_network(self, force=False):
         if not self.auth.is_logged_in() or self._home_network_request_in_flight:
             return
-
-        self._set_home_network_busy(True, "SETTING...")
         self.home_network_feedback_label.configure(text="")
 
         def worker():
-            success, home_network, message = self.auth.set_home_network()
+            success, home_network, message, error_code = self.auth.set_home_network(force=force)
             self.after(
                 0,
-                lambda: self._finish_set_home_network(success, home_network, message),
+                lambda: self._finish_set_home_network(success, home_network, message, error_code),
             )
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _finish_set_home_network(self, success, home_network, message):
+    def _finish_set_home_network(self, success, home_network, message, error_code=""):
         self._set_home_network_busy(False)
         if success:
             self._render_home_network(
                 home_network,
                 message=message or "Home network updated successfully.",
             )
+        elif error_code == "OUTSIDE_HOME_NETWORK":
+            self._show_overwrite_confirmation()
         else:
             self._render_home_network(self.auth.home_network, error=message)
+
+    def _show_overwrite_confirmation(self):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Overwrite Home Network?")
+        dialog.geometry("400x180")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["deep_void"])
+        dialog.transient(self.master)
+        dialog.grab_set()
+        ctk.CTkLabel(
+            dialog,
+            text="You are outside your registered home\nnetwork. Overwriting it will change which\nnetwork gets ad-blocking protection.",
+            font=ctk.CTkFont(size=13),
+            text_color=COLORS["text_primary"],
+            justify="center",
+        ).pack(pady=(20, 16))
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20)
+
+        def on_cancel():
+            dialog.destroy()
+            self._render_home_network(self.auth.home_network, error="Home network update cancelled.")
+
+        def on_confirm():
+            dialog.destroy()
+            self.set_home_network(force=True)
+
+        ctk.CTkButton(
+            btn_frame, text="Cancel", width=120,
+            fg_color=COLORS["text_muted"], hover_color="#666666",
+            command=on_cancel,
+        ).pack(side="left", expand=True, padx=4)
+        ctk.CTkButton(
+            btn_frame, text="Overwrite", width=120,
+            fg_color=COLORS["exposed_red"], hover_color="#dc2626",
+            text_color=COLORS["text_primary"],
+            command=on_confirm,
+        ).pack(side="right", expand=True, padx=4)
 
     def start_auth_check(self):
         self._check_auth_loop()
