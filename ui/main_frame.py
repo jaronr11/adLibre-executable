@@ -328,16 +328,16 @@ class MainFrame(ctk.CTkFrame):
             self.show_error(str(e))
 
     def _exempt_device(self):
-        """Re-enable IPv6 so this device bypasses DNS-based ad-blocking."""
-        self.dns_service.enable_ipv6()
+        """Set DNS to 1.1.1.1, bypassing adLibre ad-blocking."""
+        self.dns_service.exempt()
         self._is_exempt = True
         self.exempt_button.pack_forget()
         self.undo_exempt_button.pack(fill="x")
         self.exempt_tip.configure(text="This device is currently exempted from ad-blocking.")
 
     def _undo_exempt_device(self):
-        """Disable IPv6 again to restore ad-blocking."""
-        self.dns_service.disable_ipv6()
+        """Restore DNS to the adLibre server."""
+        self.dns_service.undo_exempt()
         self._is_exempt = False
         self.undo_exempt_button.pack_forget()
         self.exempt_button.pack(fill="x")
