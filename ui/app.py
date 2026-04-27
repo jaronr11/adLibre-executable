@@ -1,3 +1,4 @@
+import atexit
 import customtkinter as ctk
 from config import COLORS, DNS_SERVER
 from services.auth_service import AuthService
@@ -17,8 +18,21 @@ class DNSChangerApp(ctk.CTk):
 
         self.auth = AuthService()
         self.dns = DNSService(DNS_SERVER)
+        # Recover from a hard-killed previous session: if DNS or IPv6 were
+        # left in our "connected" state, reset them before this session
+        # starts so the user isn't stuck with stale ad-blocking config.
+        try:
+            self.dns.disconnect()
+        except Exception:
+            pass
         self.dns.disable_ipv6()
         self.is_connected = False
+        self._cleaned_up = False
+
+        # Restore the user's network state when the app exits, however
+        # it exits: closing the window, sys.exit, or interpreter shutdown.
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        atexit.register(self._cleanup)
 
         self.login_frame = LoginFrame(self, auth_service=self.auth, on_login_success=self.handle_login)
         self.main_frame = MainFrame(self, dns_service=self.dns, auth_service=self.auth, on_logout=self.handle_logout)
@@ -59,3 +73,28 @@ class DNSChangerApp(ctk.CTk):
         self.main_frame.stop_home_network_polling()
         self.login_frame._reset_button()
         self.show_login()
+
+    def _cleanup(self):
+        """Restore DNS + IPv6 to their pre-launch state. Idempotent."""
+        if self._cleaned_up:
+            return
+        self._cleaned_up = True
+        try:
+            if self.is_connected:
+                self.dns.disconnect()
+        except Exception:
+            pass
+        try:
+            self.dns.enable_ipv6()
+        except Exception:
+            pass
+
+    def _on_close(self):
+        self._cleanup()
+        try:
+            self.auth.stop_periodic_tasks()
+            self.main_frame.stop_auth_check()
+            self.main_frame.stop_home_network_polling()
+        except Exception:
+            pass
+        self.destroy()
