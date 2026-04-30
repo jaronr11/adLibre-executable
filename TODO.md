@@ -1,6 +1,8 @@
 - ~~Change build to setup with Inno~~
 - Still get authorization error when logging in from inactive account (connecting) to active account
-- Make app fully have administrator purposes, after approving once.
-- License for exe, and notary for DMG
+- ~~Make app fully have administrator purposes, after approving once.~~
+- License for exe, and notary for DMG (apple developer account)
 - License for Linux?
-- Make app work for ethernet
+- Make app work for ethernet and all connection types.
+- Optimize ram usage?
+- Add dropdown for home network UI

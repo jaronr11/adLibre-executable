@@ -112,6 +112,22 @@ class DNSService:
         except Exception:
             pass
 
+    def exempt(self):
+        """Set DNS to 1.1.1.1, bypassing adLibre ad-blocking."""
+        if platform.system() == "Darwin":
+            subprocess.run("networksetup -setdnsservers Wi-Fi 1.1.1.1", shell=True, check=True)
+        else:
+            subprocess.run('netsh interface ip set dns name="Wi-Fi" static 1.1.1.1', shell=True, check=True)
+        self._flush_dns_cache()
+
+    def undo_exempt(self):
+        """Restore DNS to the adLibre server."""
+        if platform.system() == "Darwin":
+            subprocess.run(f"networksetup -setdnsservers Wi-Fi {self.dns_server}", shell=True, check=True)
+        else:
+            subprocess.run(f'netsh interface ip set dns name="Wi-Fi" static {self.dns_server}', shell=True, check=True)
+        self._flush_dns_cache()
+
     def _flush_dns_cache(self):
         """Flush the OS DNS resolver cache.
 

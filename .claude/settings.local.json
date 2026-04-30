@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "PowerShell(gh pr list --repo jaronr11/adLibre-executable)"
+    ]
+  }
+}

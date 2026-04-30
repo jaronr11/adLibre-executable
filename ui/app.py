@@ -37,6 +37,8 @@ class DNSChangerApp(ctk.CTk):
         self.login_frame = LoginFrame(self, auth_service=self.auth, on_login_success=self.handle_login)
         self.main_frame = MainFrame(self, dns_service=self.dns, auth_service=self.auth, on_logout=self.handle_logout)
 
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # Check if already logged in (has saved tokens)
         if self.auth.is_logged_in():
             self.main_frame.set_user(self.auth.user)
@@ -75,15 +77,15 @@ class DNSChangerApp(ctk.CTk):
         self.show_login()
 
     def _cleanup(self):
-        """Restore DNS + IPv6 to their pre-launch state. Idempotent."""
+        """Restore DNS and IPv6 before the window is destroyed."""
         if self._cleaned_up:
             return
         self._cleaned_up = True
-        try:
-            if self.is_connected:
+        if self.is_connected:
+            try:
                 self.dns.disconnect()
-        except Exception:
-            pass
+            except Exception:
+                pass
         try:
             self.dns.enable_ipv6()
         except Exception:

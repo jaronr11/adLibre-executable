@@ -131,15 +131,11 @@ class MainFrame(ctk.CTkFrame):
         )
         self.server_label.pack(anchor="center")
 
-        # Shown only while connected. The OS DNS cache is already flushed
-        # by DNSService, but Chrome keeps its own internal host cache and
-        # socket pool that an external process can't touch — so tell the
-        # user how to clear them for instant full blocking.
         self.browser_hint_container = ctk.CTkFrame(body, fg_color="transparent")
 
         self.browser_hint_label = ctk.CTkLabel(
             self.browser_hint_container,
-            text="Tip: Restart your browser for full ad-blocking.",
+            text="Tip: Restart your browser or flush caches for full ad-blocking.",
             font=ctk.CTkFont(size=11),
             text_color=COLORS["text_muted"],
         )
@@ -328,16 +324,16 @@ class MainFrame(ctk.CTkFrame):
             self.show_error(str(e))
 
     def _exempt_device(self):
-        """Re-enable IPv6 so this device bypasses DNS-based ad-blocking."""
-        self.dns_service.enable_ipv6()
+        """Set DNS to 1.1.1.1, bypassing adLibre ad-blocking."""
+        self.dns_service.exempt()
         self._is_exempt = True
         self.exempt_button.pack_forget()
         self.undo_exempt_button.pack(fill="x")
         self.exempt_tip.configure(text="This device is currently exempted from ad-blocking.")
 
     def _undo_exempt_device(self):
-        """Disable IPv6 again to restore ad-blocking."""
-        self.dns_service.disable_ipv6()
+        """Restore DNS to the adLibre server."""
+        self.dns_service.undo_exempt()
         self._is_exempt = False
         self.undo_exempt_button.pack_forget()
         self.exempt_button.pack(fill="x")
@@ -378,40 +374,54 @@ class MainFrame(ctk.CTkFrame):
             self.browser_hint_container.pack_forget()
 
     def _flush_browser_dns(self):
-        """Open Chrome's cache inspection pages so the user can one-click
-        Clear host cache AND Flush socket pools.
+        """Open browser-specific diagnostic pages so the user can flush
+        DNS caches and close stale connections.
 
-        Clearing only the host cache is not enough: Chrome keeps
-        keep-alive TCP / HTTP2 / QUIC sockets open to already-resolved
-        servers and reuses them for minutes without re-resolving DNS, so
-        ads served over those existing connections leak through even
-        after the host cache is empty. Flushing socket pools drops those
-        reused connections.
+        Chromium browsers get chrome://net-internals pages for clearing
+        the host cache and flushing socket pools. Firefox gets
+        about:networking#dns which has a "Clear DNS Cache" button.
+        Safari on macOS gets an AppleScript-driven "Empty Caches" via
+        the Develop menu; if that fails the user should restart Safari.
 
-        chrome:// URLs are a browser-internal scheme, not a web URI, so
-        the OS URL handler usually can't resolve them (Windows shows a
-        "Get an app to open this link" dialog). We have to launch a
-        Chromium binary directly with the URLs as arguments.
+        Internal URL schemes (chrome://, about:) can't be opened via
+        the OS URL handler, so we locate each browser binary directly.
         """
-        urls = [
-            "chrome://net-internals/#dns",
-            "chrome://net-internals/#sockets",
-        ]
-        browser = self._find_chromium_browser()
-        if browser:
+        opened_any = False
+
+        chromium = self._find_chromium_browser()
+        if chromium:
             try:
-                subprocess.Popen([browser, *urls], close_fds=True)
-                return
+                subprocess.Popen(
+                    [chromium,
+                     "chrome://net-internals/#dns",
+                     "chrome://net-internals/#sockets"],
+                    close_fds=True,
+                )
+                opened_any = True
             except Exception:
                 pass
-        # Last resort: hand off to the default browser. On Windows this
-        # will likely show the "get an app" dialog for chrome:// URLs,
-        # but on macOS it may still succeed if Chrome is the handler.
-        for url in urls:
+
+        firefox = self._find_firefox_browser()
+        if firefox:
             try:
-                webbrowser.open(url)
+                subprocess.Popen(
+                    [firefox, "about:networking#dns"],
+                    close_fds=True,
+                )
+                opened_any = True
             except Exception:
                 pass
+
+        if self._flush_safari_cache():
+            opened_any = True
+
+        if not opened_any:
+            for url in ("chrome://net-internals/#dns",
+                        "chrome://net-internals/#sockets"):
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
 
     @staticmethod
     def _find_chromium_browser():
@@ -450,6 +460,56 @@ class MainFrame(ctk.CTkFrame):
                 if path:
                     return path
         return None
+
+    @staticmethod
+    def _find_firefox_browser():
+        """Return a path to an installed Firefox browser, or None."""
+        system = platform.system()
+        if system == "Windows":
+            candidates = [
+                r"%ProgramFiles%\Mozilla Firefox\firefox.exe",
+                r"%ProgramFiles(x86)%\Mozilla Firefox\firefox.exe",
+            ]
+            for raw in candidates:
+                path = os.path.expandvars(raw)
+                if path and os.path.exists(path):
+                    return path
+        elif system == "Darwin":
+            path = "/Applications/Firefox.app/Contents/MacOS/firefox"
+            if os.path.exists(path):
+                return path
+        else:
+            for name in ("firefox", "firefox-esr"):
+                path = shutil.which(name)
+                if path:
+                    return path
+        return None
+
+    @staticmethod
+    def _flush_safari_cache():
+        """Flush Safari's caches on macOS via the Develop menu.
+
+        Safari uses the OS DNS resolver (already flushed by DNSService),
+        but keeps HTTP/2 connections alive. The Develop > Empty Caches
+        command drops those. Returns True if the flush was attempted.
+        Safari is not available on Windows.
+        """
+        if platform.system() != "Darwin":
+            return False
+        if not os.path.exists("/Applications/Safari.app"):
+            return False
+        try:
+            subprocess.Popen(
+                ["osascript", "-e",
+                 'tell application "Safari" to activate',
+                 "-e",
+                 'tell application "System Events" to keystroke '
+                 '"e" using {option down, command down}'],
+                close_fds=True,
+            )
+            return True
+        except Exception:
+            return False
 
     def _set_home_network_busy(self, busy, button_text=None):
         self._home_network_request_in_flight = busy
