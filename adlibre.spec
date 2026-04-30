@@ -38,14 +38,16 @@ mac_icon = str(icon_mac) if icon_mac.exists() else None
 exe = EXE(
     pyz,
     a.scripts,
-    [],  # Empty for onedir mode
-    exclude_binaries=True,  # Required for onedir mode
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
     name='adLibre',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -55,20 +57,18 @@ exe = EXE(
     uac_admin=True if sys.platform == 'win32' else False,
 )
 
-# Collect all files for distribution
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='adLibre',
-)
-
 # macOS app bundle
 if sys.platform == 'darwin':
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='adLibre',
+    )
     app = BUNDLE(
         coll,
         name='adLibre.app',
