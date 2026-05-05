@@ -3,6 +3,7 @@
 - ~~Make app fully have administrator purposes, after approving once.~~
 - License for exe, and notary for DMG (apple developer account)
 - License for Linux?
-- Make app work for ethernet and all connection types.
-- Optimize ram usage?
+- ~~Make app work for ethernet and all connection types.~~
+- Optimize ram/disk usage
+- Speed up connection process.
 - Add dropdown for home network UI
