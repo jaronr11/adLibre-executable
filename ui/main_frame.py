@@ -168,13 +168,26 @@ class MainFrame(ctk.CTkFrame):
 
         card_header = ctk.CTkFrame(self.home_network_card, fg_color="transparent")
         card_header.pack(fill="x", padx=16, pady=(16, 8))
+        card_header.configure(cursor="hand2")
+        card_header.bind("<Button-1>", self._toggle_home_network_body)
 
-        ctk.CTkLabel(
+        self.home_network_chevron = ctk.CTkLabel(
+            card_header,
+            text="▼",  # down-pointing triangle (expanded)
+            font=ctk.CTkFont(size=10),
+            text_color=COLORS["text_muted"],
+        )
+        self.home_network_chevron.pack(side="left", padx=(2, 8))
+        self.home_network_chevron.bind("<Button-1>", self._toggle_home_network_body)
+
+        home_network_title = ctk.CTkLabel(
             card_header,
             text="HOME NETWORK",
             font=ctk.CTkFont(family=FONT, size=11, weight="bold"),
             text_color=COLORS["text_muted"],
-        ).pack(side="left")
+        )
+        home_network_title.pack(side="left")
+        home_network_title.bind("<Button-1>", self._toggle_home_network_body)
 
         self.home_network_badge = ctk.CTkLabel(
             card_header,
@@ -188,6 +201,10 @@ class MainFrame(ctk.CTkFrame):
         )
         self.home_network_badge.pack(side="right")
 
+        # Body widgets are packed directly into the card so the card's own
+        # border wraps them. They live in self._collapsible_widgets so the
+        # toggle can pack/unpack them as a group while keeping their pack
+        # options.
         self.home_network_status_label = ctk.CTkLabel(
             self.home_network_card,
             text="Checking your registered home network...",
@@ -195,6 +212,7 @@ class MainFrame(ctk.CTkFrame):
             text_color=COLORS["text_primary"],
             anchor="w",
             justify="left",
+            wraplength=320,
         )
         self.home_network_status_label.pack(fill="x", padx=16)
 
@@ -215,6 +233,7 @@ class MainFrame(ctk.CTkFrame):
             text_color=COLORS["shield_green"],
             anchor="w",
             justify="left",
+            wraplength=320,
         )
         self.home_network_feedback_label.pack(fill="x", padx=16)
 
@@ -230,6 +249,16 @@ class MainFrame(ctk.CTkFrame):
             command=self.set_home_network,
         )
         self.home_network_button.pack(fill="x", padx=16, pady=(12, 16))
+
+        # Repack-options for the toggle: each entry is (widget, pack_kwargs).
+        # Order matters — they re-pack in this order, after the card_header.
+        self._collapsible_widgets = [
+            (self.home_network_status_label, {"fill": "x", "padx": 16}),
+            (self.home_network_detail_label, {"fill": "x", "padx": 16, "pady": (8, 8)}),
+            (self.home_network_feedback_label, {"fill": "x", "padx": 16}),
+            (self.home_network_button, {"fill": "x", "padx": 16, "pady": (12, 16)}),
+        ]
+        self._home_network_expanded = True
 
         self.exempt_container = ctk.CTkFrame(body, fg_color="transparent")
         self.exempt_container.pack(fill="x", pady=(16, 0))
@@ -338,6 +367,18 @@ class MainFrame(ctk.CTkFrame):
         self.undo_exempt_button.pack_forget()
         self.exempt_button.pack(fill="x")
         self.exempt_tip.configure(text="Tip: Exempt this device if ad-blocking interferes with work tools.")
+
+    def _toggle_home_network_body(self, _event=None):
+        """Show or hide the home network details below the card header."""
+        self._home_network_expanded = not self._home_network_expanded
+        if self._home_network_expanded:
+            for widget, kwargs in self._collapsible_widgets:
+                widget.pack(**kwargs)
+            self.home_network_chevron.configure(text="▼")
+        else:
+            for widget, _ in self._collapsible_widgets:
+                widget.pack_forget()
+            self.home_network_chevron.configure(text="▶")
 
     def update_connection_ui(self):
         if self.master.is_connected:
