@@ -38,10 +38,11 @@ mac_icon = str(icon_mac) if icon_mac.exists() else None
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    # Windows: include binaries/datas for a single-file exe
+    # macOS: exclude them so COLLECT + BUNDLE can create the .app directory structure
+    *([a.binaries, a.zipfiles, a.datas] if sys.platform != 'darwin' else []),
     [],
+    exclude_binaries=(sys.platform == 'darwin'),
     name='adLibre',
     debug=False,
     bootloader_ignore_signals=False,

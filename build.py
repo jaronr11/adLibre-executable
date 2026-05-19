@@ -6,12 +6,12 @@ Run this on each target platform to generate the executable.
 import subprocess
 import sys
 import shutil
-import winreg
 from pathlib import Path
 
 
 def _find_inno_setup():
     """Find ISCC.exe via the Windows registry."""
+    import winreg
     for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
             with winreg.OpenKey(root, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1") as key:
